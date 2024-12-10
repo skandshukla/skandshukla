@@ -1,0 +1,116 @@
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.svm import SVC
+from sklearn.metrics import confusion_matrix, classification_report, ConfusionMatrixDisplay, roc_curve, auc
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import cross_val_score
+
+# Load and preprocess the dataset
+dataset_path = r"C:\Users\DELL\Downloads\dataset (1).csv"
+data = pd.read_csv(dataset_path)
+
+# Encode target variable
+label_encoder = LabelEncoder()
+data['classification'] = label_encoder.fit_transform(data['classification'])
+
+# Drop unnecessary columns
+data = data.drop(['hash'], axis=1)
+
+# Convert categorical columns into dummy variables
+categorical_columns = data.select_dtypes(include=['object']).columns
+data = pd.get_dummies(data, columns=categorical_columns)
+
+# Scale features
+scaler = StandardScaler()
+X = pd.DataFrame(scaler.fit_transform(data.drop('classification', axis=1)), columns=data.drop('classification', axis=1).columns)
+y = data['classification']
+
+# Split the dataset into train and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
+
+# Initialize models
+log_reg = LogisticRegression(max_iter=1000, random_state=42)
+decision_tree = DecisionTreeClassifier(random_state=42)
+random_forest = RandomForestClassifier(random_state=42)
+knn = KNeighborsClassifier()
+svm = SVC(random_state=42, probability=True)  # Added probability=True
+
+# List of models
+models = {
+    'Logistic Regression': log_reg,
+    'Decision Tree': decision_tree,
+    'Random Forest': random_forest,
+    'KNN': knn,
+    'SVM': svm
+}
+
+# --- Step 1: EDA ---
+# Basic information
+print(data.info())
+print(data.describe())
+
+# Check for missing values
+print(data.isnull().sum())
+
+# Visualizations
+sns.countplot(x='classification', data=data)
+plt.title("Distribution of Classification")
+plt.show()
+
+# Correlation heatmap
+correlation = data.corr()
+plt.figure(figsize=(12, 8))
+sns.heatmap(correlation, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title("Correlation Heatmap")
+plt.show()
+
+# --- Step 2: AUC & ROC Curve ---
+def evaluate_models_auc(models, X_test, y_test):
+    plt.figure(figsize=(10, 8))
+    for model_name, model in models.items():
+        model.fit(X_train, y_train)
+        y_prob = model.predict_proba(X_test)[:, 1]
+        fpr, tpr, thresholds = roc_curve(y_test, y_prob)
+        roc_auc = auc(fpr, tpr)
+        plt.plot(fpr, tpr, label=f'{model_name} (AUC = {roc_auc:.2f})')
+    plt.plot([0, 1], [0, 1], color='navy', linestyle='--')  # Diagonal line
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('ROC Curve')
+    plt.legend(loc='lower right')
+    plt.show()
+
+# Call the AUC evaluation
+evaluate_models_auc(models, X_test, y_test)
+
+# --- Step 3: Evaluation with Confusion Matrix ---
+def evaluate_model(model, X_test, y_test, model_name):
+    y_pred = model.predict(X_test)
+    cm = confusion_matrix(y_test, y_pred)
+    print(f"\nResults for {model_name}:")
+    print(classification_report(y_test, y_pred))
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=model.classes_)
+    disp.plot()
+    plt.title(f"Confusion Matrix: {model_name}")
+    plt.show()
+
+# Evaluate all models
+for model_name, model in models.items():
+    evaluate_model(model, X_test, y_test, model_name)
+
+# --- Step 4: Cross-validation scores ---
+def evaluate_cross_validation(models, X, y):
+    for model_name, model in models.items():
+        scores = cross_val_score(model, X, y, cv=5, scoring='accuracy')
+        print(f"{model_name} - Cross-validation Accuracy: {scores.mean():.2f} (+/- {scores.std():.2f})")
+
+# Call cross-validation
+evaluate_cross_validation(models, X, y)
